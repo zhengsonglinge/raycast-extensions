@@ -1,0 +1,65 @@
+{
+  "name": "raycast-deepseek-assistant",
+  "title": "DeepSeek Assistant",
+  "description": "Ask DeepSeek from Raycast and copy the response.",
+  "icon": "deepseek-icon.png",
+  "author": "zhengsonglinge",
+  "categories": [
+    "Productivity",
+    "Developer Tools"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "ask-deepseek",
+      "title": "Ask DeepSeek",
+      "subtitle": "Chat completions",
+      "description": "Send a prompt to DeepSeek and copy the answer.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "apiKey",
+      "title": "DeepSeek API Key",
+      "description": "Create one in the DeepSeek API console.",
+      "type": "password",
+      "required": true
+    },
+    {
+      "name": "model",
+      "title": "Default Model",
+      "description": "DeepSeek chat model used by default.",
+      "type": "dropdown",
+      "required": true,
+      "default": "deepseek-chat",
+      "data": [
+        {
+          "title": "DeepSeek Chat",
+          "value": "deepseek-chat"
+        },
+        {
+          "title": "DeepSeek Reasoner",
+          "value": "deepseek-reasoner"
+        }
+      ]
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.19",
+    "react": "^19.2.4"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.1.1",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.12",
+    "eslint": "^9.35.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  },
+  "scripts": {
+    "dev": "ray develop",
+    "build": "ray build -e dist",
+    "lint": "ray lint"
+  }
+}
