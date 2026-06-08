@@ -2,6 +2,7 @@ import {
   Action,
   ActionPanel,
   Clipboard,
+  Detail,
   Icon,
   List,
   LocalStorage,
@@ -9,6 +10,7 @@ import {
   getPreferenceValues,
   openExtensionPreferences,
   showToast,
+  useNavigation,
 } from "@raycast/api";
 import { useEffect, useState } from "react";
 import { DeepSeekModel, askDeepSeek } from "./deepseek";
@@ -34,6 +36,7 @@ type HistoryItem = Answer & {
 };
 
 export default function Command() {
+  const { push } = useNavigation();
   const preferences = getPreferenceValues<Preferences>();
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<DeepSeekModel>(
@@ -111,6 +114,7 @@ export default function Command() {
         HISTORY_STORAGE_KEY,
         JSON.stringify(nextHistory),
       );
+      push(<AnswerView answer={nextAnswer} />);
     } catch (requestError) {
       const message =
         requestError instanceof Error
@@ -128,19 +132,6 @@ export default function Command() {
     }
   }
 
-  const markdown = answer
-    ? [
-        `# ${answer.prompt}`,
-        "",
-        `Model: \`${answer.model}\``,
-        "",
-        answer.reasoning ? `## Reasoning\n\n${answer.reasoning}` : "",
-        answer.content ? `## Answer\n\n${answer.content}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n")
-    : "";
-
   async function clearHistory() {
     setHistory([]);
     await LocalStorage.removeItem(HISTORY_STORAGE_KEY);
@@ -153,7 +144,7 @@ export default function Command() {
   return (
     <List
       isLoading={isLoading}
-      isShowingDetail={Boolean(answer || error || history.length)}
+      isShowingDetail={false}
       searchText={prompt}
       onSearchTextChange={setPrompt}
       navigationTitle="Ask DeepSeek"
@@ -186,13 +177,6 @@ export default function Command() {
             ? `${selectedModel} · 按 Enter 发送`
             : `${selectedModel} · 输入问题后按 Enter`
         }
-        detail={
-          answer ? (
-            <List.Item.Detail markdown={markdown} />
-          ) : error ? (
-            <List.Item.Detail markdown={`# 请求失败\n\n${error}`} />
-          ) : undefined
-        }
         actions={
           <ActionPanel>
             <Action
@@ -202,24 +186,26 @@ export default function Command() {
               onAction={handleAsk}
             />
             {answer?.content ? (
-              <Action
-                icon={Icon.Clipboard}
-                title="Copy Answer"
-                shortcut={{ modifiers: ["cmd"], key: "c" }}
-                onAction={async () => {
-                  await Clipboard.copy(answer.content);
-                  await showToast({
-                    style: Toast.Style.Success,
-                    title: "回答已复制",
-                  });
-                }}
+              <Action.Push
+                icon={Icon.Text}
+                title="Open Latest Answer"
+                target={<AnswerView answer={answer} />}
               />
             ) : null}
-            {markdown ? (
-              <Action.CopyToClipboard
-                icon={Icon.Text}
-                title="Copy Full Result"
-                content={markdown}
+            {answer?.content ? (
+              <CopyAction
+                icon={Icon.Clipboard}
+                title="Copy Latest Answer"
+                shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                content={answer.content}
+                successTitle="回答已复制"
+              />
+            ) : null}
+            {error ? (
+              <Action.Push
+                icon={Icon.ExclamationMark}
+                title="Open Error"
+                target={<Detail markdown={`# 请求失败\n\n${error}`} />}
               />
             ) : null}
             <Action
@@ -229,73 +215,169 @@ export default function Command() {
               onAction={openExtensionPreferences}
             />
             {history.length ? (
-              <Action
-                icon={Icon.Trash}
-                title="Clear History"
-                shortcut={{ modifiers: ["ctrl"], key: "x" }}
-                onAction={clearHistory}
+              <Action.Push
+                icon={Icon.Clock}
+                title="Show History"
+                shortcut={{ modifiers: ["cmd"], key: "y" }}
+                target={
+                  <HistoryView
+                    history={history}
+                    onClearHistory={clearHistory}
+                    onUsePrompt={(item) => {
+                      setPrompt(item.prompt);
+                      setSelectedModel(item.model);
+                    }}
+                  />
+                }
               />
             ) : null}
           </ActionPanel>
         }
       />
-      {history.length ? (
-        <List.Section title="History" subtitle={`${history.length} records`}>
-          {history.map((item) => {
-            const itemMarkdown = [
-              `# ${item.prompt}`,
-              "",
-              `Model: \`${item.model}\``,
-              "",
-              `Time: ${new Date(item.createdAt).toLocaleString()}`,
-              "",
-              item.reasoning ? `## Reasoning\n\n${item.reasoning}` : "",
-              item.content ? `## Answer\n\n${item.content}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n\n");
+    </List>
+  );
+}
 
-            return (
-              <List.Item
-                key={item.id}
-                id={item.id}
-                icon={Icon.Clock}
-                title={item.prompt}
-                subtitle={`${item.model} · ${new Date(item.createdAt).toLocaleString()}`}
-                detail={<List.Item.Detail markdown={itemMarkdown} />}
-                actions={
-                  <ActionPanel>
-                    <Action
-                      icon={Icon.RotateClockwise}
-                      title="Ask Again"
-                      onAction={() => {
-                        setPrompt(item.prompt);
-                        setSelectedModel(item.model);
-                      }}
-                    />
-                    <Action.CopyToClipboard
-                      icon={Icon.Clipboard}
-                      title="Copy Answer"
-                      content={item.content}
-                    />
-                    <Action.CopyToClipboard
-                      icon={Icon.Text}
-                      title="Copy Full Result"
-                      content={itemMarkdown}
-                    />
-                    <Action
-                      icon={Icon.Trash}
-                      title="Clear History"
-                      shortcut={{ modifiers: ["ctrl"], key: "x" }}
-                      onAction={clearHistory}
-                    />
-                  </ActionPanel>
-                }
-              />
-            );
-          })}
-        </List.Section>
-      ) : null}
+function buildAnswerMarkdown(answer: Answer) {
+  return [
+    `# ${answer.prompt}`,
+    "",
+    `Model: \`${answer.model}\``,
+    "",
+    answer.reasoning ? `## Reasoning\n\n${answer.reasoning}` : "",
+    answer.content ? `## Answer\n\n${answer.content}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function CopyAction(props: {
+  icon: Icon;
+  title: string;
+  content: string;
+  successTitle: string;
+  shortcut?: Action.Props["shortcut"];
+}) {
+  return (
+    <Action
+      icon={props.icon}
+      title={props.title}
+      shortcut={props.shortcut}
+      onAction={async () => {
+        await Clipboard.copy(props.content);
+        await showToast({
+          style: Toast.Style.Success,
+          title: props.successTitle,
+        });
+      }}
+    />
+  );
+}
+
+function AnswerView(props: { answer: Answer }) {
+  const markdown = buildAnswerMarkdown(props.answer);
+
+  return (
+    <Detail
+      navigationTitle="DeepSeek Answer"
+      markdown={markdown}
+      actions={
+        <ActionPanel>
+          <CopyAction
+            icon={Icon.Clipboard}
+            title="Copy Answer"
+            shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+            content={props.answer.content}
+            successTitle="回答已复制"
+          />
+          <CopyAction
+            icon={Icon.Text}
+            title="Copy Full Result"
+            shortcut={{ modifiers: ["cmd", "shift", "opt"], key: "c" }}
+            content={markdown}
+            successTitle="完整结果已复制"
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function HistoryView(props: {
+  history: HistoryItem[];
+  onClearHistory: () => Promise<void>;
+  onUsePrompt: (item: HistoryItem) => void;
+}) {
+  const { pop } = useNavigation();
+
+  return (
+    <List
+      isShowingDetail={false}
+      navigationTitle="DeepSeek History"
+      searchBarPlaceholder="搜索历史问题"
+    >
+      <List.Section
+        title="History"
+        subtitle={`${props.history.length} records`}
+      >
+        {props.history.map((item) => {
+          const itemMarkdown = [
+            buildAnswerMarkdown(item),
+            "",
+            `Time: ${new Date(item.createdAt).toLocaleString()}`,
+          ].join("\n\n");
+
+          return (
+            <List.Item
+              key={item.id}
+              id={item.id}
+              icon={Icon.Clock}
+              title={item.prompt}
+              subtitle={`${item.model} · ${new Date(item.createdAt).toLocaleString()}`}
+              actions={
+                <ActionPanel>
+                  <Action.Push
+                    icon={Icon.Text}
+                    title="Open Answer"
+                    target={<AnswerView answer={item} />}
+                  />
+                  <Action
+                    icon={Icon.RotateClockwise}
+                    title="Ask Again"
+                    onAction={() => {
+                      props.onUsePrompt(item);
+                      pop();
+                    }}
+                  />
+                  <CopyAction
+                    icon={Icon.Clipboard}
+                    title="Copy Answer"
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                    content={item.content}
+                    successTitle="回答已复制"
+                  />
+                  <CopyAction
+                    icon={Icon.Text}
+                    title="Copy Full Result"
+                    shortcut={{ modifiers: ["cmd", "shift", "opt"], key: "c" }}
+                    content={itemMarkdown}
+                    successTitle="完整结果已复制"
+                  />
+                  <Action
+                    icon={Icon.Trash}
+                    title="Clear History"
+                    shortcut={{ modifiers: ["ctrl"], key: "x" }}
+                    onAction={async () => {
+                      await props.onClearHistory();
+                      pop();
+                    }}
+                  />
+                </ActionPanel>
+              }
+            />
+          );
+        })}
+      </List.Section>
     </List>
   );
 }
